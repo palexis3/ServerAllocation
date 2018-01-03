@@ -14,7 +14,7 @@ RTM_READ_DELAY = 1
 SERVER_COMMAND = "allocate"
 FREE_COMMAND = "free"
 MENTION_REGEX = "^<@(|[WU].+)>(.*)"
-STAGING_SERVERS = ["release", "core", "platform", "qa", "collaboration"]
+STAGING_SERVERS = ["release", "core", "platform", "qa", "collaboration", "mobile"]
 
 
 def parse_bot_commands(slack_events):
@@ -24,11 +24,12 @@ def parse_bot_commands(slack_events):
         If it's not found, then this function return None, None
     """
     for event in slack_events:
-        if event["type"] == "message" and not "subtype" in event:
-            user_id, message = parse_direct_mention(event["text"])
-            if user_id == serverbot_id:
-                return message, event["channel"]
-    return None, None
+        if event["type"] == "message" and "user" in event:
+            # event["user"], the id of the actual user
+            s_id, message = parse_direct_mention(event["text"])
+            if s_id == serverbot_id:
+                return message, event["channel"], event["user"]
+    return None, None, None
 
 
 def parse_direct_mention(message_text):
@@ -37,6 +38,7 @@ def parse_direct_mention(message_text):
         If there is no direct mention, returns None
     """
     matches = re.search(MENTION_REGEX, message_text)
+
     # the first group contains the username, the second group contains the remaining message
     return (matches.group(1), matches.group(2).strip()) if matches else (None, None)
 
@@ -88,7 +90,7 @@ def handle_command(command, channel):
             contactServerConsumers()
             vacant_server = find_vacant_server()
             if vacant_server is None:
-                response = "All servers are currently occupied."
+                response = "All servers are currently occupied. %s, %s" % (user_id, serverbot_id)
         else:
             updateServer(vacant_server, user_id)
             response = "You have allocated %s.staging for %shrs" % (vacant_server, default_time)
@@ -110,13 +112,10 @@ if __name__ == "__main__":
     if slack_client.rtm_connect(with_team_state=False):
         print("Server Bot connected and running!")
         # Read bot's user ID by calling Web API method `auth.test`
-        client = slack_client.api_call("auth.test")
-        if client["user"] == "bot":
-            serverbot_id = client["user_id"]
-        else:
-            user_id = client["user_id"]
+        serverbot_id = slack_client.api_call("auth.test")["user_id"]
         while True:
-            command, channel = parse_bot_commands(slack_client.rtm_read())
+            command, channel, u_id = parse_bot_commands(slack_client.rtm_read())
+            user_id = u_id
             if command:
                 handle_command(command, channel)
             time.sleep(RTM_READ_DELAY)
