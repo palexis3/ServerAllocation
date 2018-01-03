@@ -2,12 +2,20 @@ import os
 import time
 import re
 from slackclient import SlackClient
+from datetime import datetime
+from datetime import timedelta
+from Person import Person
+import threading
 
 
 # instantiate Slack client
 slack_client = SlackClient(os.environ.get('SLACK_BOT_TOKEN'))
 serverbot_id = None
 user_id = None
+non_vacant_servers = []
+users_dict = {}
+users_timer_dict = {}
+
 
 # constants
 RTM_READ_DELAY = 1
@@ -15,6 +23,7 @@ SERVER_COMMAND = "allocate"
 FREE_COMMAND = "free"
 MENTION_REGEX = "^<@(|[WU].+)>(.*)"
 STAGING_SERVERS = ["release", "core", "platform", "qa", "collaboration", "mobile"]
+
 
 
 def parse_bot_commands(slack_events):
@@ -46,6 +55,9 @@ def find_vacant_server():
     """
         Finds a server that is currently not in use. Returns None if all servers are being occupied
     """
+    for server in STAGING_SERVERS:
+        if server not in non_vacant_servers:
+            return server
     return None
 
 def contactServerConsumers():
@@ -57,6 +69,8 @@ def getUserServer(user_id):
     """
         Finds the server that this user is currently using
     """
+    if user_id in users_dict:
+        return users_dict.get(user_id).getUserServer()
     return None
 
 def updateUser(command, user_id):
@@ -64,27 +78,57 @@ def updateUser(command, user_id):
         Updates the User and Server they're currently using based on their command
     """
 
+def removeUserServer(user_id):
+    """
+        Removes this user with the server that they're currently attached to
+    """
+    if user_id in users_dict:
+        server = users_dict.get(user_id).getUserServer()
+        non_vacant_servers.remove(server)
+        del users_dict[user_id]
+
+    if user_id in users_timer_dict:
+        timer = users_timer_dict.get(user_id)
+        timer.cancel()
+        del users_timer_dict[user_id]
+
+
+def updateServer(server, user_id, server_time):
+    """
+        Sets this server as occupied and updates the respective user's info
+    """
+    now = datetime.now()
+    run_at = now + timedelta(hours=server_time)
+    delay = (run_at - now).total_seconds()
+
+    # Setup a scheduler to remove a user based on timing
+    timer = threading.Timer(delay, removeUserServer(user_id))
+    timer.start()
+
+    non_vacant_servers.append(server)
+    users_dict[user_id] = Person(user_id, server)
+    users_timer_dict[user_id] = timer
+
 
 def handle_command(command, channel):
 
     """
         Executes bot command if the command is known
     """
-
     command = command.lower()
     default_response = "Not sure what you mean by %s. Try using 'allocate' and 'free' commands" % command
     response = None
-    default_time = 4
+    server_time = 4
 
     if user_id is not None:
-        print("There is a user_id %s" % user_id)
+        print("user_id is %s" % user_id)
 
     # This is where you start to implement more commands!
     if command.startswith(SERVER_COMMAND):
         arr = command.split(" ")
         num = arr[1] if len(arr) > 1 else None
         if num is not None:
-            default_time = int(num[0])
+            server_time = int(num[0])
         vacant_server = find_vacant_server()
         if vacant_server is None:
             contactServerConsumers()
@@ -92,13 +136,14 @@ def handle_command(command, channel):
             if vacant_server is None:
                 response = "All servers are currently occupied. %s, %s" % (user_id, serverbot_id)
         else:
-            updateServer(vacant_server, user_id)
-            response = "You have allocated %s.staging for %shrs" % (vacant_server, default_time)
+            updateServer(vacant_server, user_id, server_time)
+            response = "You have allocated %s.staging for %shrs" % (vacant_server, server_time)
     elif command.startswith(FREE_COMMAND):
         user_server = getUserServer(user_id)
         if user_server is None:
-            response = "You were never assigned a server"
+            response = "You currently do not have an assigned server to free"
         else:
+            removeUserServer(user_id)
             response = "You have freed %s.staging" % user_server
 
     # Sends the response back to the channel
