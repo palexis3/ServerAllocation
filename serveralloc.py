@@ -20,6 +20,7 @@ users_timer_dict = {}
 RTM_READ_DELAY = 1
 SERVER_COMMAND = "allocate"
 FREE_COMMAND = "free"
+STATUS_COMMAND = "status"
 MENTION_REGEX = "^<@(|[WU].+)>(.*)"
 # "core", "platform", "qa", "collaboration", "mobile"
 STAGING_SERVERS = ["release"]
@@ -73,12 +74,12 @@ def contact_user_with_update(command, user_id, channel):
     while True:
         if len(non_vacant_servers) != len(STAGING_SERVERS):
             handle_commands(command, channel, user_id)
-            break
-        elif time.time() - start_time < 120:
+        elif time.time() - start_time < 30:
             time.sleep(1)
         else:
             response = "All servers are still in use. Try again later"
             send_message(user_id, response, None, channel)
+            break
 
 
 
@@ -178,7 +179,7 @@ def handle_commands(command, channel, user_id):
             response = "All servers are currently occupied. Wait while we contact all server holders..."
             send_message(user_id, response, default_response, channel)
             # wait 20 seconds to check if any server has been vacated
-            threading.Timer(1, lambda: contact_user_with_update(command, user_id, channel)).start()
+            threading.Timer(0, lambda: contact_user_with_update(command, user_id, channel)).start()
         else:
             updateUserServer(vacant_server, user_id, server_time)
             user_name = getUserName(user_id)
@@ -207,6 +208,14 @@ def handle_commands(command, channel, user_id):
             send_channel_message(channel, channel_message)
         elif command[0] == "n" and user_server is not None:
             response = "Thank you! You still hold %s.staging." % user_server
+        send_message(user_id, response, default_response, channel)
+    elif command.startswith(STATUS_COMMAND):
+        stat = {}
+        for user in users_dict.keys():
+            server = users_dict.get(user).getUserServer()
+            name = getUserName(user)
+            stat[name] = server
+        response = str(stat)
         send_message(user_id, response, default_response, channel)
     else:
         send_message(user_id, response, default_response, channel)
