@@ -12,6 +12,7 @@ import threading
 slack_client = SlackClient(os.environ.get('SLACK_BOT_TOKEN'))
 serverbot_id = None
 user_id = None
+current_channel = None
 non_vacant_servers = []
 users_dict = {}
 users_timer_dict = {}
@@ -23,7 +24,6 @@ SERVER_COMMAND = "allocate"
 FREE_COMMAND = "free"
 MENTION_REGEX = "^<@(|[WU].+)>(.*)"
 STAGING_SERVERS = ["release", "core", "platform", "qa", "collaboration", "mobile"]
-
 
 
 def parse_bot_commands(slack_events):
@@ -47,7 +47,6 @@ def parse_direct_mention(message_text):
         If there is no direct mention, returns None
     """
     matches = re.search(MENTION_REGEX, message_text)
-
     # the first group contains the username, the second group contains the remaining message
     return (matches.group(1), matches.group(2).strip()) if matches else (None, None)
 
@@ -64,6 +63,13 @@ def contactServerConsumers():
     """
         Contacts all users of current servers and asks them if they're done with the current allocated server
     """
+    for user_id in users_dict.keys():
+        server = users_dict.get(user_id).getUserServer
+        message = "Hello, are you done with %.staging" % server
+        send_message(user_id, message)
+
+# def send_message(user_id, message):
+
 
 def getUserServer(user_id):
     """
@@ -73,10 +79,12 @@ def getUserServer(user_id):
         return users_dict.get(user_id).getUserServer()
     return None
 
-def updateUser(command, user_id):
+# TODO: I think this will probably used for commands asking if someone is done with their server
+def handle_user_command(command, user_id):
     """
         Updates the User and Server they're currently using based on their command
     """
+
 
 def removeUserServer(user_id):
     """
@@ -110,7 +118,7 @@ def updateServer(server, user_id, server_time):
     users_timer_dict[user_id] = timer
 
 
-def handle_command(command, channel):
+def handle_bot_command(command, channel):
 
     """
         Executes bot command if the command is known
@@ -141,7 +149,7 @@ def handle_command(command, channel):
     elif command.startswith(FREE_COMMAND):
         user_server = getUserServer(user_id)
         if user_server is None:
-            response = "You currently do not have an assigned server to free"
+            response = "You currently do not have an assigned server to free."
         else:
             removeUserServer(user_id)
             response = "You have freed %s.staging" % user_server
@@ -161,8 +169,10 @@ if __name__ == "__main__":
         while True:
             command, channel, u_id = parse_bot_commands(slack_client.rtm_read())
             user_id = u_id
+            current_channel = channel
+            print(current_channel)
             if command:
-                handle_command(command, channel)
+                handle_bot_command(command, channel)
             time.sleep(RTM_READ_DELAY)
     else:
         print("Connection failed. Exception traceback printed above.")
