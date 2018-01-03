@@ -65,10 +65,21 @@ def contactServerConsumers():
     """
     for user_id in users_dict.keys():
         server = users_dict.get(user_id).getUserServer
-        message = "Hello, are you done with %.staging" % server
+        message = "Hello, are you done with %.staging?" % server
         send_message(user_id, message)
 
-# def send_message(user_id, message):
+def send_message(user_id, message):
+    """
+        Contacts a user using a particular server asking them if they're done it
+    """
+    if current_channel is not None:
+        slack_client.api_call(
+        "chat.postEphemeral",
+        channel=current_channel,
+        text=message,
+        user=user_id
+        )
+
 
 
 def getUserServer(user_id):
