@@ -11,6 +11,7 @@ import threading
 slack_client = SlackClient(os.environ.get('SLACK_BOT_TOKEN'))
 serverbot_id = None
 user_id = None
+all_users = None
 non_vacant_servers = []
 users_dict = {}
 users_timer_dict = {}
@@ -37,6 +38,7 @@ def parse_bot_commands(slack_events):
                 return message, event["channel"], event["user"]
     return None, None, None
 
+# def getUserName
 
 def parse_direct_mention(message_text):
     """
@@ -197,6 +199,7 @@ if __name__ == "__main__":
         print("Server Bot connected and running!")
         # Read bot's user ID by calling Web API method `auth.test`
         serverbot_id = slack_client.api_call("auth.test")["user_id"]
+        all_users = slack_client.api_call("users.list")
         while True:
             command, channel, u_id = parse_bot_commands(slack_client.rtm_read())
             if command:
