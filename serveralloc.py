@@ -59,6 +59,14 @@ def find_vacant_server():
     return None
 
 
+def contact_user_with_update(command, user_id, channel):
+    if len(non_vacant_servers) == len(STAGING_SERVERS):
+        response = "All servers are still in use. Try again later"
+        send_message(user_id, response, None, channel)
+    else:
+        print("Recalling user")
+        handle_commands(command, channel, user_id)
+
 
 def contactServerConsumers(user, channel, command):
     """
@@ -68,8 +76,6 @@ def contactServerConsumers(user, channel, command):
         server = users_dict.get(user_id).getUserServer()
         message = "Hello, are you done with %s.staging?" % server
         send_message(user_id, message, None, channel)
-
-
 
 
 def send_message(user_id, response, default_response, channel):
@@ -155,11 +161,15 @@ def handle_commands(command, channel, user_id):
         if vacant_server is None:
             contactServerConsumers(user_id, channel, command)
             response = "All servers are currently occupied. Wait while we contact all server holders..."
+            send_message(user_id, response, default_response, channel)
+            # wait 20 seconds to check if any server has been vacated
+            threading.Timer(20, lambda: contact_user_with_update(command, user_id, channel)).start()
         else:
             updateUserServer(vacant_server, user_id, server_time)
             channel_message = "%s.staging has been allocated!" % vacant_server
             send_channel_message(channel, channel_message)
             response = "You have allocated %s.staging for %shrs." % (vacant_server, server_time)
+            send_message(user_id, response, default_response, channel)
     elif command.startswith(FREE_COMMAND):
         user_server = getUserServer(user_id)
         if user_server is None:
@@ -169,6 +179,7 @@ def handle_commands(command, channel, user_id):
             response = "You have freed %s.staging." % user_server
             channel_message = "%s.staging is now free!" % user_server
             send_channel_message(channel, channel_message)
+        send_message(user_id, response, default_response, channel)
     elif command[0] == "y" or command[0] == "n":
         user_server = getUserServer(user_id)
         if command[0] == "y" and user_server is not None:
@@ -178,8 +189,8 @@ def handle_commands(command, channel, user_id):
             send_channel_message(channel, channel_message)
         elif command[0] == "n" and user_server is not None:
             response = "Thank you! You still hold %s.staging." % user_server
+        send_message(user_id, response, default_response, channel)
 
-    send_message(user_id, response, default_response, channel)
 
 if __name__ == "__main__":
     if slack_client.rtm_connect(with_team_state=False):
